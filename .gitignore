@@ -17,3 +17,6 @@ electric_rates/*
 # *.ipynb
 !single_scenario_example.ipynb
 !multi_scenario_example.ipynb
+
+# Ignore the JSON files in JSONs
+JSONs/*
