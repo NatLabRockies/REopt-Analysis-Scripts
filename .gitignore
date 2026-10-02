@@ -19,4 +19,4 @@ electric_rates/*
 !multi_scenario_example.ipynb
 
 # Ignore the JSON files in JSONs
-JSONs/*
+REopt Julia Package Scripts/JSONs/*
