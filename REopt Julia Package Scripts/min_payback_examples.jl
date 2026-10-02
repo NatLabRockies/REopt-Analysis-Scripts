@@ -9,6 +9,8 @@ using HiGHS
 using XLSX
 using DataFrames
 
+include(joinpath(@__DIR__, "functions", "reopt_helpers.jl"))
+
 blended_annual_energy_rate = 0.12  # Example value in $/kWh
 blended_annual_demand_rate = 35.0  # Example value in $/kW-month
 
@@ -32,12 +34,17 @@ for i in eachindex(thresholds)
     input_data_site["Financial"]["blended_annual_energy_rate"] = blended_annual_energy_rate
     input_data_site["Financial"]["blended_annual_demand_rate"] = blended_annual_demand_rate
 
+    # Add in ElectricStorage to the json
+    if i > 5
+        input_data_site["ElectricStorage"] = Dict("model_degradation" => false, "battery_replacement_year" => 10)
+    end
+
     # run the optimization
     s = Scenario(input_data_site)
     inputs = REoptInputs(s)
 
     m1 = Model(optimizer_with_attributes(HiGHS.Optimizer, "mip_rel_gap" => 0.01, "output_flag" => false, "log_to_console" => false))
-    m2 = Model(optimizer_with_attributes(HiGHS.Optimizer, "mip_rel_gap" => 0.01,"output_flag" => false, "log_to_console" => false))
+    m2 = Model(optimizer_with_attributes(HiGHS.Optimizer, "mip_rel_gap" => 0.01, "output_flag" => false, "log_to_console" => false))
 
     results = run_reopt([m1,m2], inputs)
     append!(site_analysis, [(input_data_site, results)])
@@ -45,6 +52,43 @@ end
 
 file_storage_location = "results/"
 write.(joinpath(file_storage_location, "min_payback_results.json"), JSON.json(site_analysis))
+
+scens = thresholds
+
+df = DataFrame(
+    threshold_payback = [thresholds[i] for i in eachindex(scens)],
+    payback_years = [safe_get(site_analysis[i][2], ["Financial", "simple_payback_years"]) for i in eachindex(scens)],
+    npv = [round(safe_get(site_analysis[i][2], ["Financial", "npv"]), digits=2) for i in eachindex(scens)],
+    lcc = [round(safe_get(site_analysis[i][2], ["Financial", "lcc"]), digits=2) for i in eachindex(scens)],
+    lcc_BAU = [round(safe_get(site_analysis[i][2], ["Financial", "lcc_bau"]), digits=2) for i in eachindex(scens)],
+    PV_size = [safe_get(site_analysis[i][2], ["PV", "size_kw"]) for i in eachindex(scens)],
+    PV_all_year1_production = [round(safe_get(site_analysis[i][2], ["PV", "year_one_energy_produced_kwh"]), digits=0) for i in eachindex(scens)],
+    PV_all_annual_energy_production_avg = [round(safe_get(site_analysis[i][2], ["PV", "annual_energy_produced_kwh"]), digits=0) for i in eachindex(scens)],
+    PV_all_energy_lcoe = [round(safe_get(site_analysis[i][2], ["PV", "lcoe_per_kwh"]), digits=4) for i in eachindex(scens)],
+    PV_all_serving_load = [sum(safe_get(site_analysis[i][2], ["PV", "electric_to_load_series_kw"], 0))* 0.25 for i in eachindex(scens)],
+    PV_all_energy_exported = [round(safe_get(site_analysis[i][2], ["PV", "annual_energy_exported_kwh"]), digits=0) for i in eachindex(scens)],
+    PV_all_energy_curtailed = [sum(safe_get(site_analysis[i][2], ["PV", "electric_curtailed_series_kw"], 0))* 0.25 for i in eachindex(scens)],
+    PV_all_energy_to_Battery_year1 = [sum(safe_get(site_analysis[i][2], ["PV", "electric_to_storage_series_kw"], 0))* 0.25 for i in eachindex(scens)],
+    Battery_size_kw = [safe_get(site_analysis[i][2], ["ElectricStorage", "size_kw"]) for i in eachindex(scens)],
+    Battery_size_kwh = [safe_get(site_analysis[i][2], ["ElectricStorage", "size_kwh"]) for i in eachindex(scens)],
+    Grid_Electricity_Supplied_kWh_annual = [round(safe_get(site_analysis[i][2], ["ElectricUtility", "annual_energy_supplied_kwh"]), digits=0) for i in eachindex(scens)],
+    Grid_Electricity_Supplied_kWh_annual_bau = [round(safe_get(site_analysis[i][2], ["ElectricUtility", "annual_energy_supplied_kwh_bau"]), digits=0) for i in eachindex(scens)],
+    LifeCycle_Emission_Reduction_Fraction = [safe_get(site_analysis[i][2], ["Site", "lifecycle_emissions_reduction_CO2_fraction"]) for i in eachindex(scens)],
+    LifeCycle_capex_costs_for_generation_techs = [round(safe_get(site_analysis[i][2], ["Financial", "lifecycle_generation_tech_capital_costs"]), digits=2) for i in eachindex(scens)],
+    LifeCycle_capex_costs_for_battery = [round(safe_get(site_analysis[i][2], ["Financial", "lifecycle_storage_capital_costs"]), digits=2) for i in eachindex(scens)],
+    Initial_upfront_capex_wo_incentives = [round(safe_get(site_analysis[i][2], ["Financial", "initial_capital_costs"]), digits=2) for i in eachindex(scens)],
+    Initial_upfront_capex_w_incentives = [round(safe_get(site_analysis[i][2], ["Financial", "initial_capital_costs_after_incentives"]), digits=2) for i in eachindex(scens)],
+    Initial_upfront_battery_capex = [round(safe_get(site_analysis[i][2], ["ElectricStorage", "initial_capital_cost"]), digits=2) for i in eachindex(scens)],
+    Present_cost_of_replacement_battery_after_tax = [round(safe_get(site_analysis[i][2], ["Financial", "replacements_present_cost_after_tax"]), digits=2) for i in eachindex(scens)],
+    Year1_lifecycle_costs_om_before_tax = [safe_get(site_analysis[i][2], ["Financial", "year_one_om_costs_before_tax"]) for i in eachindex(scens)],
+    Yr1_energy_cost_after_tax = [round(safe_get(site_analysis[i][2], ["ElectricTariff", "year_one_energy_cost_before_tax"]), digits=2) for i in eachindex(scens)],
+    Yr1_demand_cost_after_tax = [round(safe_get(site_analysis[i][2], ["ElectricTariff", "year_one_demand_cost_before_tax"]), digits=2) for i in eachindex(scens)],
+    Yr1_total_energy_bill_before_tax = [round(safe_get(site_analysis[i][2], ["ElectricTariff", "year_one_bill_before_tax"]), digits=2) for i in eachindex(scens)],
+    Year1_elec_bill_before_tax_bau = [safe_get(site_analysis[i][2], ["ElectricTariff", "year_one_bill_before_tax_bau"]) for i in eachindex(scens)],
+    Yr1_export_benefit_before_tax = [round(safe_get(site_analysis[i][2], ["ElectricTariff", "year_one_export_benefit_before_tax"]), digits=2) for i in eachindex(scens)],
+    Yr1_total_operating_cost_before_tax = [round(safe_get(site_analysis[i][2], ["Financial", "year_one_total_operating_cost_before_tax"]), digits=2) for i in eachindex(scens)],
+    IRR = [safe_get(site_analysis[i][2], ["Financial", "internal_rate_of_return"]) for i in eachindex(scens)]
+)
 
 # Define the xlsx loacation
 xlsx_results_location = joinpath(file_storage_location, "min_payback_results.xlsx")
