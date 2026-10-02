@@ -5,7 +5,7 @@ Examples for running minimum payback threshold optimization analysis using the R
 using REopt
 using JSON
 using JuMP
-using HiGHS
+using Xpress
 using XLSX
 using DataFrames
 
@@ -30,24 +30,40 @@ for i in eachindex(thresholds)
     # set the current threshold
     input_data_site["Financial"]["max_simple_payback_years"] = thresholds[i]
 
+    input_data_site["ElectricLoad"]["year"] = 2025
+
     # Add the rates
-    input_data_site["Financial"]["blended_annual_energy_rate"] = blended_annual_energy_rate
-    input_data_site["Financial"]["blended_annual_demand_rate"] = blended_annual_demand_rate
+    input_data_site["ElectricTariff"]["blended_annual_energy_rate"] = blended_annual_energy_rate
+    input_data_site["ElectricTariff"]["blended_annual_demand_rate"] = blended_annual_demand_rate
+    input_data_site["ElectricTariff"]["wholesale_rate"] = 0.0 # $/kWh
+
+    # Add the financial parameters
+    input_data_site["Financial"]["offtaker_tax_rate_fraction"] = 0.0
+    input_data_site["Financial"]["owner_tax_rate_fraction"] = 0.0
+
+    # Add in the PV system
+    input_data_site["PV"] = Dict()  # Example PV system size in kW
 
     # Add in ElectricStorage to the json
     if i > 5
         input_data_site["ElectricStorage"] = Dict("model_degradation" => false, "battery_replacement_year" => 10)
     end
 
+    println("About to start run for threshold: ", thresholds[i], " years.")
+
     # run the optimization
     s = Scenario(input_data_site)
+    println("Obtained Scenario()")
     inputs = REoptInputs(s)
+    println("Set up inputs")
 
-    m1 = Model(optimizer_with_attributes(HiGHS.Optimizer, "mip_rel_gap" => 0.01, "output_flag" => false, "log_to_console" => false))
-    m2 = Model(optimizer_with_attributes(HiGHS.Optimizer, "mip_rel_gap" => 0.01, "output_flag" => false, "log_to_console" => false))
-
+    m1 = Model(optimizer_with_attributes(Xpress.Optimizer, "MIPRELSTOP" => 0.01, "OUTPUTLOG" => 0))
+    m2 = Model(optimizer_with_attributes(Xpress.Optimizer, "MIPRELSTOP" => 0.01, "OUTPUTLOG" => 0))
+    println("Set up models")
     results = run_reopt([m1,m2], inputs)
+    println("Obtained results")
     append!(site_analysis, [(input_data_site, results)])
+    println("Completed run for simple payback threshold: ", thresholds[i], " years.")
 end
 
 file_storage_location = "results/"
