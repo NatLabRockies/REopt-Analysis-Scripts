@@ -27,9 +27,6 @@ for i in eachindex(thresholds)
     input_data = JSON.parsefile("scenarios/min_payback.json")
     input_data_site = copy(input_data)
 
-    # set the current threshold
-    input_data_site["Financial"]["max_simple_payback_years"] = thresholds[i]
-
     input_data_site["ElectricLoad"]["year"] = 2025
 
     # Add the rates
@@ -37,12 +34,14 @@ for i in eachindex(thresholds)
     input_data_site["ElectricTariff"]["blended_annual_demand_rate"] = blended_annual_demand_rate
     input_data_site["ElectricTariff"]["wholesale_rate"] = 0.0 # $/kWh
 
+    input_data_site["Settings"]["solver_name"] = "Xpress"
+
     # Add the financial parameters
     input_data_site["Financial"]["offtaker_tax_rate_fraction"] = 0.0
     input_data_site["Financial"]["owner_tax_rate_fraction"] = 0.0
 
     # Add in the PV system
-    input_data_site["PV"] = Dict()  # Example PV system size in kW
+    input_data_site["PV"] = Dict("location" => "ground", "installed_cost_per_kw" => 1500.0)  # Example PV system size in kW
 
     # Add in ElectricStorage to the json
     if i > 5
@@ -52,16 +51,34 @@ for i in eachindex(thresholds)
     println("About to start run for threshold: ", thresholds[i], " years.")
 
     # run the optimization
-    s = Scenario(input_data_site)
+    #s = Scenario(input_data_site)
     println("Obtained Scenario()")
-    inputs = REoptInputs(s)
-    println("Set up inputs")
+    inputs = REoptInputs(Scenario(input_data_site))
+    println("Set up inputs part 1")
+    bau_inputs = REopt.BAUInputs(inputs)
+    println("Run the model part 1")
+    m_bau = Model(optimizer_with_attributes(Xpress.Optimizer, "MIPRELSTOP" => 0.01, "OUTPUTLOG" => 0))
+    println("Run through reopt part 1")
+    r_bau = run_reopt(m_bau, bau_inputs)
+    operating_cost_bau = r_bau["Financial"]["year_one_operating_cost_before_tax_model"]
 
-    m1 = Model(optimizer_with_attributes(Xpress.Optimizer, "MIPRELSTOP" => 0.01, "OUTPUTLOG" => 0))
-    m2 = Model(optimizer_with_attributes(Xpress.Optimizer, "MIPRELSTOP" => 0.01, "OUTPUTLOG" => 0))
+    println("Now re-insert operating cost $operating_cost_bau and $(thresholds[i]) into input_data_site and re-run optimization.")
+    # set the current threshold
+    input_data_site["Financial"]["max_simple_payback_years"] = thresholds[i]
+    input_data_site["Financial"]["bau_year_one_operating_cost"] = operating_cost_bau
+
+    #s_opt = Scenario(input_data_site)
+    inputs_opt = REoptInputs(Scenario(input_data_site))
+
+    #m1 = Model(optimizer_with_attributes(Xpress.Optimizer, "MILREPSTOP" => 0.01, "OUTPUTLOG" => 0))
+    m_opt = Model(optimizer_with_attributes(Xpress.Optimizer, "MIPRELSTOP" => 0.01, "OUTPUTLOG" => 0))
     println("Set up models")
-    results = run_reopt([m1,m2], inputs)
+    results = run_reopt(m_opt, inputs_opt)
     println("Obtained results")
+
+    # Calculate proforma metrics
+    proforma_metrics = proforma_results(inputs_opt, results)
+
     append!(site_analysis, [(input_data_site, results)])
     println("Completed run for simple payback threshold: ", thresholds[i], " years.")
 end
@@ -110,9 +127,9 @@ df = DataFrame(
 xlsx_results_location = joinpath(file_storage_location, "min_payback_results.xlsx")
 
 # Check if the Excel file already exists
-if isfile(file_storage_location)
+if isfile(xlsx_results_location)
     # Open the Excel file in read-write mode
-    XLSX.openxlsx(file_storage_location, mode="rw") do xf
+    XLSX.openxlsx(xlsx_results_location, mode="rw") do xf
         counter = 0
         while true
             sheet_name = "Result_" * string(counter)
@@ -131,10 +148,10 @@ if isfile(file_storage_location)
     end
 else # if the XLSX file does not exist, create a new one and write the DataFrame to it
     # Write DataFrame to a new Excel file
-    XLSX.openxlsx(file_storage_location, mode="w") do xf
+    XLSX.openxlsx(xlsx_results_location, mode="w") do xf
         XLSX.rename!(xf[1], "Result_0")
         XLSX.writetable!(xf["Result_0"], df)
     end
 end
 
-println("Successful write into XLSX file: $file_storage_location")
+println("Successful write into XLSX file: $xlsx_results_location")
