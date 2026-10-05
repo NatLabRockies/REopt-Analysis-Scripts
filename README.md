@@ -1,9 +1,9 @@
 # REopt Analysis Scripts for the REopt API and Julia Package
 
 [REopt](https://reopt.nrel.gov/) is a techno-economic decision support model
-from NREL which is used for optimizing energy systems for buildings, campuses,
+from National Laboratory of the Rockies (NLR) which is used for optimizing energy systems for buildings, campuses,
 communities, and microgrids. REopt can be accessed in many ways: 
-- Free, easy to use web tool: https://reopt.nrel.gov/
+- Free, easy to use web tool: https://reopt.nlr.gov/
 - By calling the REopt application programming interface (API) (examples in this repository)
 - By using the registered REopt Julia Package (examples in this repository)
   
