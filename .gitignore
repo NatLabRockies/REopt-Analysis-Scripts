@@ -20,3 +20,8 @@ electric_rates/*
 
 # Ignore the JSON files in JSONs
 REopt Julia Package Scripts/JSONs/*
+
+# Ignore output JSON files
+REopt Julia Package Scripts/results/*.json
+!REopt Julia Package Scripts/results/pv_retail.json
+!REopt Julia Package Scripts/results/wind_battery_hospital.json

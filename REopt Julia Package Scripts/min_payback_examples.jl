@@ -8,14 +8,22 @@ using JuMP
 using Xpress
 using XLSX
 using DataFrames
+import Statistics
+using Statistics
 
 include(joinpath(@__DIR__, "functions", "reopt_helpers.jl"))
 
 blended_annual_energy_rate = 0.12  # Example value in $/kWh
 blended_annual_demand_rate = 35.0  # Example value in $/kW-month
 
+# load in load profile to calculate baseload
+input_data = JSON.parsefile("scenarios/min_payback.json")
+electric_array = input_data["ElectricLoad"]["loads_kw"]
+sort!(electric_array, rev=true)
+baseload = quantile(electric_array, 0.2)
+
 # Different thresholds to test for minimum payback analysis
-thresholds = [5, 10, 15, 20, 25, 5, 10, 15, 20, 25]
+thresholds = [0, 5, 10, 15, 20, 25, 5, 10, 15, 20, 25]
 
 # Initialize an array to store the results for each site and threshold
 site_analysis = []
@@ -42,6 +50,8 @@ for i in eachindex(thresholds)
 
     # Add in the PV system
     input_data_site["PV"] = Dict("location" => "ground", "installed_cost_per_kw" => 1500.0)  # Example PV system size in kW
+    # Add max_kw for PV
+    #input_data_site["PV"]["max_kw"] = baseload
 
     # Add in ElectricStorage to the json
     if i > 5
@@ -77,7 +87,7 @@ for i in eachindex(thresholds)
     println("Obtained results")
 
     # Calculate proforma metrics
-    proforma_metrics = proforma_results(inputs_opt, results)
+    #proforma_metrics = REopt.proforma_results(inputs_opt, results)
 
     append!(site_analysis, [(input_data_site, results)])
     println("Completed run for simple payback threshold: ", thresholds[i], " years.")
