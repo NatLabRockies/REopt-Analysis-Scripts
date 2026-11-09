@@ -31,6 +31,9 @@ site_analysis = []
 # Will run multiple runs on the same site with different simple payback thresholds and once with PV only and the next with PV + BESS
 for i in eachindex(thresholds)
 
+    # TODO
+    # When looping julia loops
+
     # read within the loop to ensure a fresh copy for each threshold
     input_data = JSON.parsefile("scenarios/min_payback.json")
     input_data_site = copy(input_data)
@@ -71,6 +74,7 @@ for i in eachindex(thresholds)
     println("Run through reopt part 1")
     r_bau = run_reopt(m_bau, bau_inputs)
     operating_cost_bau = r_bau["Financial"]["year_one_operating_cost_before_tax_model"]
+    # NOTE: Could also get the "BAU" lcc from the r_bau results if needed rather than calculating it through a '0' case
 
     println("Now re-insert operating cost $operating_cost_bau and $(thresholds[i]) into input_data_site and re-run optimization.")
     # set the current threshold
@@ -91,6 +95,13 @@ for i in eachindex(thresholds)
 
     append!(site_analysis, [(input_data_site, results)])
     println("Completed run for simple payback threshold: ", thresholds[i], " years.")
+
+    # "Clear" the memory used by the models and force garbage collection
+    finalize(backend(m_bau))
+    empty!(m_bau)
+    finalize(backend(m_opt))
+    empty!(m_opt)
+    GC.gc()
 end
 
 file_storage_location = "results/"
